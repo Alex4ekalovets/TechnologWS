@@ -744,6 +744,12 @@ class WorkspaceWidget(QWidget):
                 self.main_window.statusBar().showMessage("⛔Ошибка сохранения! Процесс пустой!")
                 return
 
+            if not os.path.exists('data'):
+                os.mkdir('data')
+
+            if not os.path.exists(r'data\uploaded'):
+                os.mkdir(r'data\uploaded')
+
             if upload:
                 logging.debug(fr'Сохранен файл data\uploaded\{order_model}.json')
                 data.to_json(fr'data\uploaded\{order_model}.json', orient='records')
@@ -790,7 +796,7 @@ class WorkspaceWidget(QWidget):
 
     def open_process_from_file(self, order_model):
         try:
-            if self.process_is_upload:
+            if self.process_is_upload and os.path.exists(fr'data\uploaded\{order_model}.json'):
                 file = fr'data\uploaded\{order_model}.json'
                 data = pd.read_json(file, orient='records', dtype={COLUMNS[0]: 'str', COLUMNS[4]: 'str'})
                 logging.debug(fr'Открыт файл процесса {file}')

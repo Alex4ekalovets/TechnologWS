@@ -399,6 +399,8 @@ def get_specification(files):
         logging.debug(f"Файлы: {files}")
         reader = CDWReader(files_paths=files)
         files_path = os.path.split(files[0])[0]
+        if not os.path.exists('temp'):
+            os.mkdir('temp')
         json_file = reader.create_json("temp/specification.json")
         return json_file
     except Exception as ex:
