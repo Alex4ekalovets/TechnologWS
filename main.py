@@ -162,7 +162,7 @@ class PandasModel(QAbstractTableModel):
         try:
             if self.df.shape[1] > 19 and self.df.iloc[index.row(), 20] in self.immutables and index.column() not in [19, 21, 22]:
                 return Qt.ItemFlag.ItemIsSelectable
-            elif self.planned and index.column() in [1] or index.column() in [11, 12, 14]:
+            elif self.planned and index.column() in [200] or index.column() in [11, 12, 14]:
                 return Qt.ItemFlag.ItemIsSelectable
             else:
                 return Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsEditable
@@ -487,7 +487,7 @@ class WorkspaceWidget(QWidget):
 
     def is_valid(self, data):
         message = "⛔"
-        terminals = ['T11', 'T12']
+        terminals = ['11', '12']
         is_valid = True
 
         # Проверка 1 - Уникальность id
@@ -507,7 +507,7 @@ class WorkspaceWidget(QWidget):
             is_valid = False
 
         # Проверка 3 - Номера терминалов указаны верно
-        cells = [x for x in data.index[~data[COLUMNS[3]].isin(terminals)]]
+        cells = [x for x in data.index[~data[COLUMNS[3]].astype(str).isin(terminals)]]
         if cells:
             for cell in cells:
                 row = cell
@@ -820,16 +820,21 @@ class WorkspaceWidget(QWidget):
         selected_order_model = self.order_model_select.itemText(item)
         for order_model in self.orders_models:
             if selected_order_model == order_model['order_model']:
+
                 self.model_edit.setText(order_model['model'])
                 self.is_planned = order_model['order_status'] != 'не запланировано'
                 self.process_is_upload = order_model['td_status'] == 'утверждено'
                 self.has_fio_doers = order_model['has_fio_doers']
-                self.process_status_label.setText(
-                    'Статус: загружен' if self.process_is_upload else 'Статус : не загружен')
                 self.model_edit.setDisabled(self.is_planned)
                 self._create_process_table_context_menu()
                 self.table_process.setDisabled(False)
                 self.open_process_from_file(order_model['order_model'])
+
+                self.process_status_label.setText(
+                    f'Статус: {"загружен" if self.process_is_upload else "не загружен"}, '
+                    f'{order_model["order_status"]}, '
+                    f'{"распределено" if self.has_fio_doers else "не распределено"}'
+                )
             else:
                 self.model_edit.clear()
                 self.model_edit.setDisabled(True)
