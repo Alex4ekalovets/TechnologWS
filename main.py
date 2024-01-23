@@ -450,10 +450,10 @@ class WorkspaceWidget(QWidget):
             if response.status_code == 200:
                 self.save_process_to_file(upload=True)
                 self.save_process_to_file()
-                self.process_status_label.setText('Статус: загружен')
                 order = self.order_model_select.currentText().split('_')[0]
                 self.on_order_model_click()
                 self.order_model_select.setCurrentText(f'{order}_{self.model_edit.text()}')
+                self.on_order_model_select(self.order_model_select.currentIndex())
             self.main_window.statusBar().showMessage(data['message'])
         except requests.exceptions.ConnectionError as ex:
             logging.exception(ex)
@@ -735,13 +735,11 @@ class WorkspaceWidget(QWidget):
         self.table_process.setDisabled(True)
 
     def on_order_model_click(self):
-        for i in range(1, len(self.order_model_select)):
-            self.order_model_select.removeItem(i)
-        self.order_model_select.addItem("Запрос данных...")
+        self.order_model_select.clear()
+        self.order_model_select.addItem("Не выбрано")
         thread = threading.Thread(target=self.get_orders_models)
         thread.start()
         thread.join()
-        self.order_model_select.removeItem(1)
         for order_model in self.orders_models:
             self.order_model_select.addItem(order_model['order_model'])
 
@@ -835,27 +833,29 @@ class WorkspaceWidget(QWidget):
         selected_order_model = self.order_model_select.itemText(item)
         for order_model in self.orders_models:
             if selected_order_model == order_model['order_model']:
-
                 self.model_edit.setText(order_model['model'])
                 self.is_planned = order_model['order_status'] != 'не запланировано'
-                self.process_is_upload = order_model['td_status'] == 'утверждено'
+                self.process_is_upload = order_model['td_status'] == 'утверждено' and not order_model['on_change']
                 self.has_fio_doers = order_model['has_fio_doers']
                 self.model_edit.setDisabled(self.is_planned)
                 self.table_process.setDisabled(False)
                 if self.process_is_upload:
                     self.change_button.show()
                     self.is_on_change = False
+                else:
+                    self.is_on_change = True
                 self.open_process_from_file(order_model['order_model'])
                 self.process_status_label.setText(
                     f'Статус: {"загружен" if self.process_is_upload else "не загружен"}, '
                     f'{order_model["order_status"]}, '
                     f'{"распределено" if self.has_fio_doers else "не распределено"}'
                 )
+                break
             else:
                 self.model_edit.clear()
                 self.model_edit.setDisabled(True)
                 self.table_process.setDisabled(True)
-                self.process_status_label.setText('Статус:')
+                self.process_status_label.setText('Статус: ')
 
     def set_change_status(self, data):
         self.main_window.statusBar().showMessage("Изменение статуса...")
