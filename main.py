@@ -23,40 +23,14 @@ from openpyxl.reader.excel import load_workbook
 
 from cdw_reader import get_specification
 from graph import draw_graph
-
-# НЕ МЕНЯТЬ ПОРЯДОК И НЕ УДАЛЯТЬ! ТОЛЬКО ДОБАВЛЯТЬ В КОНЕЦ! НАЗВАНИЯ МОЖНО МЕНЯТЬ, А СУТЬ - НЕТ!
-# ЕСЛИ ИЗМЕНИТЬ, ТО ПРИДЕТСЯ МЕНЯТЬ ВСЕ ИНДЕКСЫ ПО КОДУ
-COLUMNS = [
-    'п/п',  # 0
-    'Наименование работ',  # 1
-    'Рабочий центр',  # 2
-    '№ рабочего центра',  # 3
-    'ГОСТ и тип сварочного шва',  # 4
-    'ед.изм.',  # 5
-    'Объём работ (максимальный в смену)',  # 6
-    'Трудоёмкость в смену, час',  # 7
-    'Численность, чел.',  # 8
-    'Трудоёмкость на 1 ед./заготовку, чел/час',  # 9
-    'Кол-во ед./ заготовок на 1 котел',  # 10
-    'Трудоёмкость на 1 котел, чел/час',  # 11
-    'Расценка за объем работ, руб.',  # 12
-    'Стоимость часа, руб',  # 13
-    'Загрузка оборудования на 1 котел, часов',  # 14
-    'Наименование',  # 15
-    'Материал',  # 16
-    'Количество',  # 17
-    'Длина',  # 18
-    'Чертеж',  # 19
-    'id',  # 20
-    'Следующая операция',  # 21
-    'Предыдущая операция'  # 22
-]
+from parse_operations import get_all_operations, COLUMNS
 
 
 def df_handler(df, start_id=0):
-    filtered_data: pd.DataFrame = df[df.iloc[:, 2].notna() & df.iloc[:, 13].astype(str).str.isdigit()].iloc[:, 0:15]
+    columns_count = df.shape[1] if df.shape[1] < 20 else 20
+    filtered_data = df[df.iloc[:, 2].notna() & df.iloc[:, 13].astype(str).str.isdigit()].iloc[:, 0:columns_count]
     filtered_data.iloc[:, 0:2] = filtered_data.iloc[:, 0:2].ffill()
-    filtered_data.columns = COLUMNS[:15]
+    filtered_data.columns = COLUMNS[:columns_count]
     filtered_data = filtered_data.reindex(columns=COLUMNS)
     filtered_data['id'] = range(start_id + 1, len(filtered_data) + start_id + 1)
     filtered_data[COLUMNS[21]] = np.empty((len(filtered_data), 0)).tolist()
@@ -185,7 +159,7 @@ class Window(QMainWindow):
     def __init__(self):
         super().__init__(parent=None)
         self.setWindowTitle("Рабочее место технолога")
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(1200, 600)
         self.setWindowIcon(QIcon("img/icon.svg"))
 
         self._create_actions()
@@ -520,7 +494,7 @@ class WorkspaceWidget(QWidget):
 
             # Проверка 2 - Все обязательные поля заполнены (столбцы 0, 1, 3, 11)
             empty_cells = data[[COLUMNS[0], COLUMNS[1], COLUMNS[3], COLUMNS[11]]].stack(dropna=False)
-            cells = [list(x) for x in empty_cells.index[empty_cells.isna() | empty_cells.isin(['',])]]
+            cells = [list(x) for x in empty_cells.index[empty_cells.isna() | empty_cells.isin(['', ])]]
             is_valid = is_valid and not cells
             if cells:
                 for cell in cells:
@@ -921,7 +895,6 @@ class WorkspaceWidget(QWidget):
                 message,
                 buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
             if answer == QMessageBox.StandardButton.Yes:
-
                 ids = self.table_process.model().df[COLUMNS[20]].tolist()
                 data = {
                     'model_order_query': self.order_model_select.currentText(),
@@ -991,12 +964,16 @@ class OperationChoiceWindow(QDialog):
         self.searchbar = QLineEdit()
         self.searchbar.textChanged.connect(self.search)
 
+        from_file_button = QPushButton(text="Загрузить операции из файла", parent=self)
+        from_file_button.clicked.connect(self.open_from_file)
+
         self.setLayout(layout)
 
         ok_button = QPushButton(text="OK", parent=self)
         ok_button.clicked.connect(self.on_confirm_operation_select)
 
         layout.addWidget(self.searchbar, 0, 0, 1, 2)
+        layout.addWidget(from_file_button, 0, 2, 1, 1)
         layout.addWidget(self.table_operations, 1, 0, 1, 20)
         layout.addWidget(ok_button, 2, 0, 1, 2)
 
@@ -1006,6 +983,18 @@ class OperationChoiceWindow(QDialog):
             table.setModel(model)
         except Exception as ex:
             logging.exception(ex)
+
+    def open_from_file(self):
+        xlsx_file_name = QFileDialog.getOpenFileName(
+            self,
+            caption="Выберите файл",
+            directory=r"D:\\",
+            filter="Excel Files (*.xlsx);;",
+        )[0]
+        if xlsx_file_name:
+            get_all_operations(xlsx_file_name)
+            data = pd.read_excel(r'operations.xlsx', index_col=0)
+            self.set_table_data(self.table_operations, data)
 
     def search(self):
         try:
