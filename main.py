@@ -15,7 +15,7 @@ from PyQt6.QtGui import QIcon, QAction, QRegularExpressionValidator, QColor
 from PyQt6.QtWidgets import (
     QWidget, QApplication,
     QGridLayout, QLabel, QTableView, QMainWindow,
-    QFileDialog, QStatusBar, QToolBar, QComboBox, QDialog, QPushButton, QSplitter, QLineEdit, QCheckBox,
+    QFileDialog, QStatusBar, QToolBar, QComboBox, QDialog, QPushButton, QSplitter, QLineEdit, QCheckBox, QMessageBox,
 )
 import pandas as pd
 import numpy as np
@@ -160,7 +160,9 @@ class PandasModel(QAbstractTableModel):
 
     def flags(self, index):
         try:
-            if self.df.shape[1] > 19 and self.df.iloc[index.row(), 20] in self.immutables and index.column() not in [19, 21, 22]:
+            if self.df.shape[1] > 19 and self.df.iloc[index.row(), 20] in self.immutables and index.column() not in [19,
+                                                                                                                     21,
+                                                                                                                     22]:
                 return Qt.ItemFlag.ItemIsSelectable
             elif self.planned and index.column() in [200] or index.column() in [11, 12, 14]:
                 return Qt.ItemFlag.ItemIsSelectable
@@ -265,6 +267,7 @@ class WorkspaceWidget(QWidget):
         self.is_planned = False
         self.process_is_upload = False
         self.has_fio_doers = []
+        self.is_on_change = True
 
         self.setLayout(self.layout)
         self.table_process = QTableView()
@@ -316,11 +319,16 @@ class WorkspaceWidget(QWidget):
         columns_select_button.setIcon(QIcon("img/select-columns.svg"))
         columns_select_button.clicked.connect(self.open_select_columns_dialog)
 
+        self.change_button = QPushButton(text="Корректировка", parent=self)
+        self.change_button.hide()
+        self.change_button.clicked.connect(self.take_on_change)
+
         self.layout.addWidget(order_model_label, 0, 0, 1, 1, Qt.AlignmentFlag.AlignLeft)
         self.layout.addWidget(self.order_model_select, 0, 1, 1, 1, Qt.AlignmentFlag.AlignLeft)
         self.layout.addWidget(model_label, 0, 2, 1, 1, Qt.AlignmentFlag.AlignLeft)
         self.layout.addWidget(self.model_edit, 0, 3, 1, 1, Qt.AlignmentFlag.AlignLeft)
-        self.layout.addWidget(self.process_status_label, 0, 4, 1, 1, Qt.AlignmentFlag.AlignLeft)
+        self.layout.addWidget(self.process_status_label, 0, 5, 1, 1, Qt.AlignmentFlag.AlignLeft)
+        self.layout.addWidget(self.change_button, 0, 4, 1, 1, Qt.AlignmentFlag.AlignLeft)
         self.layout.addWidget(columns_select_button, 1, 1, 1, 9, Qt.AlignmentFlag.AlignRight)
         self.layout.addWidget(self.searchbar, 1, 0, 1, 2, Qt.AlignmentFlag.AlignLeft)
         self.layout.addWidget(self.splitter, 2, 0, 1, 10)
@@ -412,7 +420,11 @@ class WorkspaceWidget(QWidget):
         else:
             last_id = len(data)
         is_planned_process = table == self.table_process and self.is_planned
-        model = PandasModel(data, last_id, is_planned_process, immutables=self.has_fio_doers)
+        if not self.is_on_change:
+            immutables = data[COLUMNS[20]].tolist()
+        else:
+            immutables = self.has_fio_doers
+        model = PandasModel(data, last_id, is_planned_process, immutables=immutables)
         table.setModel(model)
 
     def load_cdw(self, file_names):
@@ -526,6 +538,10 @@ class WorkspaceWidget(QWidget):
             message += 'Выберите заказ-модель! '
             is_valid = False
 
+        if not self.is_on_change:
+            message += 'Необходимо взять на корректировку!'
+            is_valid = False
+
         self.main_window.statusBar().showMessage(message)
         return is_valid
 
@@ -536,8 +552,7 @@ class WorkspaceWidget(QWidget):
         self.table_process.addAction(self.add_operation_action)
         self.table_process.addAction(self.add_row_up_action)
         self.table_process.addAction(self.add_row_down_action)
-        if not self.is_planned:
-            self.table_process.addAction(self.delete_row_action)
+        self.table_process.addAction(self.delete_row_action)
 
     def _create_details_table_context_menu(self):
         self.table_details.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)
@@ -826,10 +841,11 @@ class WorkspaceWidget(QWidget):
                 self.process_is_upload = order_model['td_status'] == 'утверждено'
                 self.has_fio_doers = order_model['has_fio_doers']
                 self.model_edit.setDisabled(self.is_planned)
-                self._create_process_table_context_menu()
                 self.table_process.setDisabled(False)
+                if self.process_is_upload:
+                    self.change_button.show()
+                    self.is_on_change = False
                 self.open_process_from_file(order_model['order_model'])
-
                 self.process_status_label.setText(
                     f'Статус: {"загружен" if self.process_is_upload else "не загружен"}, '
                     f'{order_model["order_status"]}, '
@@ -840,6 +856,46 @@ class WorkspaceWidget(QWidget):
                 self.model_edit.setDisabled(True)
                 self.table_process.setDisabled(True)
                 self.process_status_label.setText('Статус:')
+
+    def set_change_status(self, data):
+        self.main_window.statusBar().showMessage("Изменение статуса...")
+        try:
+            url = "http://127.0.0.1:8000/tehnolog/change_st_status"
+            payload = json.dumps(data)
+            response = requests.post(url, data=payload)
+            data = json.loads(response.content)
+            logging.debug(data['message'])
+            if response.status_code == 200:
+                self.is_on_change = True
+                self.set_table_data(self.table_process, self.table_process.model().df)
+            self.main_window.statusBar().showMessage(data['message'])
+        except requests.exceptions.ConnectionError as ex:
+            logging.exception(ex)
+            self.main_window.statusBar().showMessage("⛔Нет связи с сервером!")
+        except Exception as ex:
+            logging.exception(ex)
+            self.main_window.statusBar().showMessage("Ошибка отправки запроса!")
+
+    def take_on_change(self):
+        message = (f'Вы уверены, что хотите откорректировать процесс?\n'
+                   f'При корректировке сменные задания будут недоступны\n'
+                   f'для планирования и распределения.\n'
+                   f'Для возможности дальнейшего распределения необходимо\n'
+                   f'обязательно повторно загрузить процесс!')
+        answer = QMessageBox.critical(
+            self,
+            title='Предупреждение!',
+            text=message,
+            buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+        if answer == QMessageBox.StandardButton.Yes:
+            ids = self.table_process.model().df[COLUMNS[20]].tolist()
+            data = {
+                'model_order_query': self.order_model_select.currentText(),
+                'tech_ids': list(set(ids) - set(self.has_fio_doers)),
+                'status': 'корректировка'
+            }
+            thread = threading.Thread(target=self.set_change_status, args=(data,))
+            thread.start()
 
 
 class SelectXlsxSheetWindow(QDialog):
