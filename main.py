@@ -877,25 +877,28 @@ class WorkspaceWidget(QWidget):
             self.main_window.statusBar().showMessage("Ошибка отправки запроса!")
 
     def take_on_change(self):
-        message = (f'Вы уверены, что хотите откорректировать процесс?\n'
-                   f'При корректировке сменные задания будут недоступны\n'
-                   f'для планирования и распределения.\n'
-                   f'Для возможности дальнейшего распределения необходимо\n'
-                   f'обязательно повторно загрузить процесс!')
-        answer = QMessageBox.critical(
-            self,
-            title='Предупреждение!',
-            text=message,
-            buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
-        if answer == QMessageBox.StandardButton.Yes:
-            ids = self.table_process.model().df[COLUMNS[20]].tolist()
-            data = {
-                'model_order_query': self.order_model_select.currentText(),
-                'tech_ids': list(set(ids) - set(self.has_fio_doers)),
-                'status': 'корректировка'
-            }
-            thread = threading.Thread(target=self.set_change_status, args=(data,))
-            thread.start()
+        try:
+            message = (f'Вы уверены, что хотите откорректировать процесс?\n'
+                       f'При корректировке сменные задания будут недоступны\n'
+                       f'для планирования и распределения.\n'
+                       f'Для возможности дальнейшего распределения необходимо\n'
+                       f'обязательно повторно загрузить процесс!')
+            answer = QMessageBox.critical(
+                self,
+                'Предупреждение!',
+                message,
+                buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+            if answer == QMessageBox.StandardButton.Yes:
+                ids = self.table_process.model().df[COLUMNS[20]].tolist()
+                data = {
+                    'model_order_query': self.order_model_select.currentText(),
+                    'tech_ids': list(set(ids) - set(self.has_fio_doers)),
+                    'status': 'корректировка'
+                }
+                thread = threading.Thread(target=self.set_change_status, args=(data,))
+                thread.start()
+        except Exception as ex:
+            logging.exception(ex)
 
 
 class SelectXlsxSheetWindow(QDialog):
