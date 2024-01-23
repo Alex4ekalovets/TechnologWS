@@ -524,10 +524,6 @@ class WorkspaceWidget(QWidget):
                 message += 'Выберите заказ-модель! '
                 is_valid = False
 
-            if not self.is_on_change:
-                message += 'Необходимо взять на корректировку!'
-                is_valid = False
-
             self.main_window.statusBar().showMessage(message)
             return is_valid
         except Exception as ex:
@@ -537,10 +533,11 @@ class WorkspaceWidget(QWidget):
         for action in self.table_process.actions():
             self.table_process.removeAction(action)
         self.table_process.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)
-        self.table_process.addAction(self.add_operation_action)
-        self.table_process.addAction(self.add_row_up_action)
-        self.table_process.addAction(self.add_row_down_action)
-        self.table_process.addAction(self.delete_row_action)
+        if self.is_on_change:
+            self.table_process.addAction(self.add_operation_action)
+            self.table_process.addAction(self.add_row_up_action)
+            self.table_process.addAction(self.add_row_down_action)
+            self.table_process.addAction(self.delete_row_action)
 
     def _create_details_table_context_menu(self):
         self.table_details.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)
@@ -844,6 +841,7 @@ class WorkspaceWidget(QWidget):
                     else:
                         self.change_button.hide()
                         self.is_on_change = True
+                    self._create_process_table_context_menu()
                     self.open_process_from_file(order_model['order_model'])
                     self.process_status_label.setText(
                         f'Статус: {"загружен" if self.process_is_upload else "не загружен"}, '
@@ -868,8 +866,6 @@ class WorkspaceWidget(QWidget):
             data = json.loads(response.content)
             logging.debug(data['message'])
             if response.status_code == 200:
-                self.is_on_change = True
-                self.set_table_data(self.table_process, self.table_process.model().df)
                 order = self.order_model_select.currentText().split('_')[0]
                 self.on_order_model_click()
                 self.order_model_select.setCurrentText(f'{order}_{self.model_edit.text()}')
@@ -901,8 +897,9 @@ class WorkspaceWidget(QWidget):
                     'tech_ids': list(set(ids) - set(self.has_fio_doers)),
                     'status': 'корректировка'
                 }
-                thread = threading.Thread(target=self.set_change_status, args=(data,))
-                thread.start()
+                self.set_change_status(data)
+                # thread = threading.Thread(target=self.set_change_status, args=(data,))
+                # thread.start()
         except Exception as ex:
             logging.exception(ex)
 
