@@ -80,20 +80,23 @@ class PandasModel(QAbstractTableModel):
         return self.df.shape[1]
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        if index.isValid():
-            if role == Qt.ItemDataRole.BackgroundRole:
-                color = self.colors.get((index.row(), index.column()))
-                if color is not None:
-                    return color
-            if role == Qt.ItemDataRole.DisplayRole or role == Qt.ItemDataRole.EditRole:
-                value = self.df.iloc[index.row(), index.column()]
-                if str(value) == 'nan' or str(value) == 'None':
-                    value = f''
-                elif isinstance(value, float):
-                    value = f'{value:.2f}'
-                else:
-                    value = f'{value}'
-                return value
+        try:
+            if index.isValid():
+                if role == Qt.ItemDataRole.BackgroundRole:
+                    color = self.colors.get((index.row(), index.column()))
+                    if color is not None:
+                        return color
+                if role == Qt.ItemDataRole.DisplayRole or role == Qt.ItemDataRole.EditRole:
+                    value = self.df.iloc[index.row(), index.column()]
+                    if str(value) == 'nan' or str(value) == 'None':
+                        value = f''
+                    elif isinstance(value, float):
+                        value = f'{value:.2f}'
+                    else:
+                        value = f'{value}'
+                    return value
+        except Exception as ex:
+            logging.exception(ex)
 
     def setData(self, index, value, role):
         try:
@@ -142,6 +145,7 @@ class PandasModel(QAbstractTableModel):
                 elif index.column() == 13:
                     self.df.iloc[index.row(), 13] = value
                     self.df.iloc[index.row(), 12] = val(11) * val(13)
+                    self.df.iloc[index.row(), 14] = val(9) * val(10) / val(8)
                 # self.df.to_json(r'data\abc.json', orient='records')
                 return True
         except Exception as ex:
@@ -413,6 +417,8 @@ class WorkspaceWidget(QWidget):
         thread.start()
 
     def set_table_data(self, table, data):
+
+        logging.debug('Начало построения таблицы')
         data = data.sort_index()
         data.index = range(0, len(data))
         if table.model():
@@ -425,7 +431,11 @@ class WorkspaceWidget(QWidget):
         else:
             immutables = self.has_fio_doers
         model = PandasModel(data, last_id, is_planned_process, immutables=immutables)
-        table.setModel(model)
+        try:
+            table.setModel(model)
+            logging.debug('Завершение построения таблицы')
+        except Exception as ex:
+            logging.exception(ex)
 
     def load_cdw(self, file_names):
         if file_names:
@@ -492,58 +502,62 @@ class WorkspaceWidget(QWidget):
                         'prev_ids': [int(x) for x in data.iloc[i, 22]],
                     }
                     shift_tasks['shift_tasks'].append(shift_task)
-                thread = threading.Thread(target=self.send_tech_data, args=(shift_tasks,))
-                thread.start()
+                self.send_tech_data(shift_tasks)
+                # thread = threading.Thread(target=self.send_tech_data, args=(shift_tasks,))
+                # thread.start()
         except Exception as ex:
             logging.exception(ex)
 
     def is_valid(self, data):
-        message = "⛔"
-        terminals = ['11', '12']
-        is_valid = True
+        try:
+            message = "⛔"
+            terminals = ['11', '12']
+            is_valid = True
 
-        # Проверка 1 - Уникальность id
-        is_valid = data[COLUMNS[20]].is_unique
-        logging.debug(f"ID уникальны: {data[COLUMNS[20]].is_unique}")
+            # Проверка 1 - Уникальность id
+            is_valid = data[COLUMNS[20]].is_unique
+            logging.debug(f"ID уникальны: {data[COLUMNS[20]].is_unique}")
 
-        # Проверка 2 - Все обязательные поля заполнены (столбцы 0, 1, 3)
-        empty_cells = data[[COLUMNS[0], COLUMNS[1], COLUMNS[3]]].stack(dropna=False)
-        cells = [list(x) for x in empty_cells.index[empty_cells.isna()]]
-        is_valid = is_valid and not cells
-        if cells:
-            for cell in cells:
-                row = cell[0]
-                column = COLUMNS.index(cell[1])
-                self.table_process.model().change_color(row, column, QColor("red"))
-            message += "Заполните обязательные поля, выделенные красным! "
-            is_valid = False
+            # Проверка 2 - Все обязательные поля заполнены (столбцы 0, 1, 3, 11)
+            empty_cells = data[[COLUMNS[0], COLUMNS[1], COLUMNS[3], COLUMNS[11]]].stack(dropna=False)
+            cells = [list(x) for x in empty_cells.index[empty_cells.isna() | empty_cells.isin(['',])]]
+            is_valid = is_valid and not cells
+            if cells:
+                for cell in cells:
+                    row = cell[0]
+                    column = COLUMNS.index(cell[1])
+                    self.table_process.model().change_color(row, column, QColor("red"))
+                message += "Заполните обязательные поля, выделенные красным! "
+                is_valid = False
 
-        # Проверка 3 - Номера терминалов указаны верно
-        cells = [x for x in data.index[~data[COLUMNS[3]].astype(str).isin(terminals)]]
-        if cells:
-            for cell in cells:
-                row = cell
-                column = 3
-                self.table_process.model().change_color(row, column, QColor("red"))
-            message += f"Номера терминалов должны быть из списка {terminals} "
-            is_valid = False
+            # Проверка 3 - Номера терминалов указаны верно
+            cells = [x for x in data.index[~data[COLUMNS[3]].astype(str).isin(terminals)]]
+            if cells:
+                for cell in cells:
+                    row = cell
+                    column = 3
+                    self.table_process.model().change_color(row, column, QColor("red"))
+                message += f"Номера терминалов должны быть из списка {terminals} "
+                is_valid = False
 
-        # Проверка 4 - Заполнена модель
-        if self.model_edit.text() == '':
-            message += 'Заполните модель! '
-            is_valid = False
+            # Проверка 4 - Заполнена модель
+            if self.model_edit.text() == '':
+                message += 'Заполните модель! '
+                is_valid = False
 
-        # Проверка 5 - Выбран заказ-модель
-        if self.order_model_select.currentText() == 'Не выбрано':
-            message += 'Выберите заказ-модель! '
-            is_valid = False
+            # Проверка 5 - Выбран заказ-модель
+            if self.order_model_select.currentText() == 'Не выбрано':
+                message += 'Выберите заказ-модель! '
+                is_valid = False
 
-        if not self.is_on_change:
-            message += 'Необходимо взять на корректировку!'
-            is_valid = False
+            if not self.is_on_change:
+                message += 'Необходимо взять на корректировку!'
+                is_valid = False
 
-        self.main_window.statusBar().showMessage(message)
-        return is_valid
+            self.main_window.statusBar().showMessage(message)
+            return is_valid
+        except Exception as ex:
+            logging.exception(ex)
 
     def _create_process_table_context_menu(self):
         for action in self.table_process.actions():
@@ -715,6 +729,7 @@ class WorkspaceWidget(QWidget):
 
     def get_orders_models(self):
         try:
+            logging.debug('Начало запроса заказ-моделей')
             url = "http://127.0.0.1:8000/tehnolog/orders_models"
             response = requests.get(url)
             self.orders_models = json.loads(response.content)
@@ -729,19 +744,27 @@ class WorkspaceWidget(QWidget):
             self.main_window.statusBar().showMessage("Ошибка получения данных!")
 
     def not_connection(self):
-        self.orders_models = []
-        self.model_edit.setDisabled(True)
-        self.model_edit.clear()
-        self.table_process.setDisabled(True)
+        try:
+            self.orders_models = []
+            self.model_edit.setDisabled(True)
+            self.model_edit.clear()
+            self.table_process.setDisabled(True)
+        except Exception as ex:
+            logging.exception(ex)
 
     def on_order_model_click(self):
-        self.order_model_select.clear()
-        self.order_model_select.addItem("Не выбрано")
-        thread = threading.Thread(target=self.get_orders_models)
-        thread.start()
-        thread.join()
-        for order_model in self.orders_models:
-            self.order_model_select.addItem(order_model['order_model'])
+        try:
+            self.order_model_select.clear()
+            self.order_model_select.addItem("Не выбрано")
+            self.get_orders_models()
+            # thread = threading.Thread(target=self.get_orders_models)
+            # thread.start()
+            # thread.join()
+            logging.debug('Завершение запроса заказ-моделей')
+            for order_model in self.orders_models:
+                self.order_model_select.addItem(order_model['order_model'])
+        except Exception as ex:
+            logging.exception(ex)
 
     def save_process_to_file(self, upload=False):
         try:
@@ -823,6 +846,7 @@ class WorkspaceWidget(QWidget):
             else:
                 logging.debug('Новый процесс')
                 data = self.initial_data
+
             max_id = data[COLUMNS[20]].max()
             self.table_process.model().last_id = max_id if pd.notna(max_id) else 0
             self.set_table_data(self.table_process, data)
@@ -830,32 +854,36 @@ class WorkspaceWidget(QWidget):
             logging.exception(ex)
 
     def on_order_model_select(self, item):
-        selected_order_model = self.order_model_select.itemText(item)
-        for order_model in self.orders_models:
-            if selected_order_model == order_model['order_model']:
-                self.model_edit.setText(order_model['model'])
-                self.is_planned = order_model['order_status'] != 'не запланировано'
-                self.process_is_upload = order_model['td_status'] == 'утверждено' and not order_model['on_change']
-                self.has_fio_doers = order_model['has_fio_doers']
-                self.model_edit.setDisabled(self.is_planned)
-                self.table_process.setDisabled(False)
-                if self.process_is_upload:
-                    self.change_button.show()
-                    self.is_on_change = False
+        try:
+            selected_order_model = self.order_model_select.itemText(item)
+            for order_model in self.orders_models:
+                if selected_order_model == order_model['order_model']:
+                    self.model_edit.setText(order_model['model'])
+                    self.is_planned = order_model['order_status'] != 'не запланировано'
+                    self.process_is_upload = order_model['td_status'] == 'утверждено' and not order_model['on_change']
+                    self.has_fio_doers = order_model['has_fio_doers']
+                    self.model_edit.setDisabled(self.is_planned)
+                    self.table_process.setDisabled(False)
+                    if self.process_is_upload:
+                        self.change_button.show()
+                        self.is_on_change = False
+                    else:
+                        self.change_button.hide()
+                        self.is_on_change = True
+                    self.open_process_from_file(order_model['order_model'])
+                    self.process_status_label.setText(
+                        f'Статус: {"загружен" if self.process_is_upload else "не загружен"}, '
+                        f'{order_model["order_status"]}, '
+                        f'{"распределено" if self.has_fio_doers else "не распределено"}'
+                    )
+                    break
                 else:
-                    self.is_on_change = True
-                self.open_process_from_file(order_model['order_model'])
-                self.process_status_label.setText(
-                    f'Статус: {"загружен" if self.process_is_upload else "не загружен"}, '
-                    f'{order_model["order_status"]}, '
-                    f'{"распределено" if self.has_fio_doers else "не распределено"}'
-                )
-                break
-            else:
-                self.model_edit.clear()
-                self.model_edit.setDisabled(True)
-                self.table_process.setDisabled(True)
-                self.process_status_label.setText('Статус: ')
+                    self.model_edit.clear()
+                    self.model_edit.setDisabled(True)
+                    self.table_process.setDisabled(True)
+                    self.process_status_label.setText('Статус: ')
+        except Exception as ex:
+            logging.exception(ex)
 
     def set_change_status(self, data):
         self.main_window.statusBar().showMessage("Изменение статуса...")
@@ -868,6 +896,10 @@ class WorkspaceWidget(QWidget):
             if response.status_code == 200:
                 self.is_on_change = True
                 self.set_table_data(self.table_process, self.table_process.model().df)
+                order = self.order_model_select.currentText().split('_')[0]
+                self.on_order_model_click()
+                self.order_model_select.setCurrentText(f'{order}_{self.model_edit.text()}')
+                self.on_order_model_select(self.order_model_select.currentIndex())
             self.main_window.statusBar().showMessage(data['message'])
         except requests.exceptions.ConnectionError as ex:
             logging.exception(ex)
@@ -889,6 +921,7 @@ class WorkspaceWidget(QWidget):
                 message,
                 buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
             if answer == QMessageBox.StandardButton.Yes:
+
                 ids = self.table_process.model().df[COLUMNS[20]].tolist()
                 data = {
                     'model_order_query': self.order_model_select.currentText(),
