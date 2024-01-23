@@ -454,33 +454,36 @@ class WorkspaceWidget(QWidget):
         #     self.main_window.statusBar().clearMessage()
 
     def upload_process(self):
-        data = self.table_process.model().df
-        if self.is_valid(data):
-            shift_tasks = {
-                'model_order_query': f'{self.order_model_select.currentText()}',
-                'order': self.order_model_select.currentText().split('_')[0],
-                'model_name': f'{self.model_edit.text()}',
-                'shift_tasks': [],
-            }
-            for i in range(len(data)):
-                shift_task = {
+        try:
+            data = self.table_process.model().df
+            if self.is_valid(data):
+                shift_tasks = {
                     'model_order_query': f'{self.order_model_select.currentText()}',
                     'order': self.order_model_select.currentText().split('_')[0],
                     'model_name': f'{self.model_edit.text()}',
-                    'op_number': f'{data.iloc[i, 0]}',
-                    'op_name': f'{data.iloc[i, 1]}',
-                    'ws_name': f'{data.iloc[i, 2]}',
-                    'op_name_full': f'{data.iloc[i, 1]}-{data.iloc[i, 2]}',
-                    'ws_number': f'{data.iloc[i, 3]}',
-                    'norm_tech': float(data.iloc[i, 11]),
-                    'draw_filename': f'{data.iloc[i, 19]}',
-                    'tech_id': int(data.iloc[i, 20]),
-                    'next_ids': [int(x) for x in data.iloc[i, 21]],
-                    'prev_ids': [int(x) for x in data.iloc[i, 22]],
+                    'shift_tasks': [],
                 }
-                shift_tasks['shift_tasks'].append(shift_task)
-            thread = threading.Thread(target=self.send_tech_data, args=(shift_tasks,))
-            thread.start()
+                for i in range(len(data)):
+                    shift_task = {
+                        'model_order_query': f'{self.order_model_select.currentText()}',
+                        'order': self.order_model_select.currentText().split('_')[0],
+                        'model_name': f'{self.model_edit.text()}',
+                        'op_number': f'{data.iloc[i, 0]}',
+                        'op_name': f'{data.iloc[i, 1]}',
+                        'ws_name': f'{data.iloc[i, 2]}',
+                        'op_name_full': f'{data.iloc[i, 1]}-{data.iloc[i, 2]}',
+                        'ws_number': f'{data.iloc[i, 3]}',
+                        'norm_tech': float(data.iloc[i, 11]),
+                        'draw_filename': f'{data.iloc[i, 19]}',
+                        'tech_id': int(data.iloc[i, 20]),
+                        'next_ids': [int(x) for x in data.iloc[i, 21]],
+                        'prev_ids': [int(x) for x in data.iloc[i, 22]],
+                    }
+                    shift_tasks['shift_tasks'].append(shift_task)
+                thread = threading.Thread(target=self.send_tech_data, args=(shift_tasks,))
+                thread.start()
+        except Exception as ex:
+            logging.exception(ex)
 
     def is_valid(self, data):
         message = "⛔"
@@ -808,7 +811,7 @@ class WorkspaceWidget(QWidget):
                 logging.debug('Новый процесс')
                 data = self.initial_data
             max_id = data[COLUMNS[20]].max()
-            self.table_process.model().last_id = max_id
+            self.table_process.model().last_id = max_id if pd.notna(max_id) else 0
             self.set_table_data(self.table_process, data)
         except Exception as ex:
             logging.exception(ex)
