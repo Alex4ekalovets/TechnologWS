@@ -87,40 +87,39 @@ class PandasModel(QAbstractTableModel):
                     if float(value) == 0:
                         logging.error('Деление на 0')
                         return False
-                    self.df.iloc[index.row(), 6] = value
+                    self.df.iloc[index.row(), 6] = float(value)
                     self.df.iloc[index.row(), 9] = val(7) * val(8) / val(6)
                     self.df.iloc[index.row(), 11] = val(9) * val(10)
                     self.df.iloc[index.row(), 12] = val(11) * val(13)
                     self.df.iloc[index.row(), 14] = val(9) * val(10) / val(8)
                 elif index.column() == 7:
-                    self.df.iloc[index.row(), 7] = value
+                    self.df.iloc[index.row(), 7] = float(value)
                     self.df.iloc[index.row(), 6] = val(8) * val(7) / val(9)
                 elif index.column() == 8:
                     if float(value) == 0:
                         logging.error('Деление на 0')
                         return False
-                    self.df.iloc[index.row(), 8] = value
+                    self.df.iloc[index.row(), 8] = float(value)
                     self.df.iloc[index.row(), 6] = val(8) * val(7) / val(9)
                     self.df.iloc[index.row(), 14] = val(9) * val(10) / val(8)
                 elif index.column() == 9:
                     if float(value) == 0:
                         logging.error('Деление на 0')
                         return False
-                    self.df.iloc[index.row(), 9] = value
+                    self.df.iloc[index.row(), 9] = float(value)
                     self.df.iloc[index.row(), 6] = val(8) * val(7) / val(9)
                     self.df.iloc[index.row(), 11] = val(9) * val(10)
                     self.df.iloc[index.row(), 12] = val(11) * val(13)
                     self.df.iloc[index.row(), 14] = val(9) * val(10) / val(8)
                 elif index.column() == 10:
-                    self.df.iloc[index.row(), 10] = value
+                    self.df.iloc[index.row(), 10] = float(value)
                     self.df.iloc[index.row(), 11] = val(9) * val(10)
                     self.df.iloc[index.row(), 12] = val(11) * val(13)
                     self.df.iloc[index.row(), 14] = val(9) * val(10) / val(8)
                 elif index.column() == 13:
-                    self.df.iloc[index.row(), 13] = value
+                    self.df.iloc[index.row(), 13] = float(value)
                     self.df.iloc[index.row(), 12] = val(11) * val(13)
                     self.df.iloc[index.row(), 14] = val(9) * val(10) / val(8)
-                # self.df.to_json(r'data\abc.json', orient='records')
                 return True
         except Exception as ex:
             logging.exception(ex)
@@ -128,7 +127,6 @@ class PandasModel(QAbstractTableModel):
             return False
 
     def headerData(self, section, orientation, role):
-        # section is the index of the column/row.
         if role == Qt.ItemDataRole.DisplayRole:
             if orientation == Qt.Orientation.Horizontal:
                 return str(self.df.columns[section])
@@ -246,6 +244,7 @@ class WorkspaceWidget(QWidget):
         self.process_is_upload = False
         self.has_fio_doers = []
         self.is_on_change = True
+        self.ids_without_doers = []
 
         self.setLayout(self.layout)
         self.table_process = QTableView()
@@ -258,7 +257,6 @@ class WorkspaceWidget(QWidget):
         self._connect_actions()
 
         self.initial_data = pd.DataFrame(
-            [],
             columns=COLUMNS
         )
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -347,51 +345,56 @@ class WorkspaceWidget(QWidget):
         self.upload_process_action.triggered.connect(self.upload_process)
         self.draw_graph_action.triggered.connect(self.draw_graph)
         self.save_action.triggered.connect(self.save_process_to_file)
-        self.save_to_xlsx_action.triggered.connect(self.save_to_xlsx)
+        self.save_to_xlsx_action.triggered.connect(self.export_to_xlsx)
+
+    @property
+    def process_data(self):
+        return self.table_process.model().df
 
     def open_xlsx_dialog(self):
-        self.xlsx_file_name = QFileDialog.getOpenFileName(
-            self,
-            caption="Выберите файл",
-            directory=r"D:\\",
-            filter="Excel Files (*.xlsx);;",
-        )[0]
-        if self.xlsx_file_name:
-            xlsx_file = pd.ExcelFile(self.xlsx_file_name)
-            sheet_names = xlsx_file.sheet_names
-            dialog = SelectXlsxSheetWindow(self, sheet_names)
-            dialog.exec()
+        if self.is_on_change:
+            self.xlsx_file_name = QFileDialog.getOpenFileName(
+                self,
+                caption="Выберите файл",
+                directory=r"D:\\",
+                filter="Excel Files (*.xlsx);;",
+            )[0]
+            if self.xlsx_file_name:
+                xlsx_file = pd.ExcelFile(self.xlsx_file_name)
+                sheet_names = xlsx_file.sheet_names
+                dialog = SelectXlsxSheetWindow(self, sheet_names)
+                dialog.exec()
 
-            if dialog.selected_sheet:
-                try:
-                    if self.has_fio_doers:
-                        data = df_handler(
-                            pd.read_excel(self.xlsx_file_name, dialog.selected_sheet),
-                            start_id=self.table_process.model().last_id
-                        )
-                        data = pd.concat((self.table_process.model().df, data))
-                        self.table_process.model().last_id = data[COLUMNS[20]].max() + 1
-                    else:
-                        data = df_handler(pd.read_excel(self.xlsx_file_name, dialog.selected_sheet))
-                        self.table_process.setModel(None)
-                    self.set_table_data(self.table_process, data)
-                except Exception as ex:
-                    logging.exception(ex)
-            else:
-                self.set_table_data(self.table_process, self.initial_data)
+                if dialog.selected_sheet:
+                    try:
+                        if self.has_fio_doers:
+                            data = df_handler(
+                                pd.read_excel(self.xlsx_file_name, dialog.selected_sheet),
+                                start_id=self.table_process.model().last_id
+                            )
+                            data = pd.concat((self.process_data, data))
+                            self.table_process.model().last_id = data[COLUMNS[20]].max() + 1
+                        else:
+                            data = df_handler(pd.read_excel(self.xlsx_file_name, dialog.selected_sheet))
+                            self.table_process.setModel(None)
+                        self.set_table_data(self.table_process, data)
+                    except Exception as ex:
+                        logging.exception(ex)
+                else:
+                    self.set_table_data(self.table_process, self.initial_data)
 
     def open_cdw_dialog(self):
-        file_names = QFileDialog.getOpenFileNames(
-            self,
-            caption="Выберите файлы",
-            directory=r"D:\\",
-            filter="CDW Files (*.cdw);;",
-        )[0]
-        thread = threading.Thread(target=self.load_cdw, args=(file_names,))
-        thread.start()
+        if self.is_on_change:
+            file_names = QFileDialog.getOpenFileNames(
+                self,
+                caption="Выберите файлы",
+                directory=r"D:\\",
+                filter="CDW Files (*.cdw);;",
+            )[0]
+            thread = threading.Thread(target=self.load_cdw, args=(file_names,))
+            thread.start()
 
     def set_table_data(self, table, data):
-
         logging.debug('Начало построения таблицы')
         data = data.sort_index()
         data.index = range(0, len(data))
@@ -401,7 +404,7 @@ class WorkspaceWidget(QWidget):
             last_id = len(data)
         is_planned_process = table == self.table_process and self.is_planned
         if not self.is_on_change:
-            immutables = data[COLUMNS[20]].tolist()
+            immutables = self.ids_without_doers + self.has_fio_doers
         else:
             immutables = self.has_fio_doers
         model = PandasModel(data, last_id, is_planned_process, immutables=immutables)
@@ -424,20 +427,16 @@ class WorkspaceWidget(QWidget):
             self.table_details.show()
 
     def send_tech_data(self, data):
-        self.main_window.statusBar().showMessage("Отправка техпроцесса...")
         try:
+            self.main_window.statusBar().showMessage("Отправка техпроцесса...")
             url = "http://127.0.0.1:8000/tehnolog/tech_data"
             payload = json.dumps(data)
             response = requests.post(url, data=payload)
             data = json.loads(response.content)
             logging.debug(data['message'])
             if response.status_code == 200:
-                self.save_process_to_file(upload=True)
                 self.save_process_to_file()
-                order = self.order_model_select.currentText().split('_')[0]
-                self.on_order_model_click()
-                self.order_model_select.setCurrentText(f'{order}_{self.model_edit.text()}')
-                self.on_order_model_select(self.order_model_select.currentIndex())
+                self.update_process_status()
             self.main_window.statusBar().showMessage(data['message'])
         except requests.exceptions.ConnectionError as ex:
             logging.exception(ex)
@@ -445,13 +444,10 @@ class WorkspaceWidget(QWidget):
         except Exception as ex:
             logging.exception(ex)
             self.main_window.statusBar().showMessage("Ошибка отправки техпроцесса!")
-        # finally:
-        #     time.sleep(5)
-        #     self.main_window.statusBar().clearMessage()
 
     def upload_process(self):
         try:
-            data = self.table_process.model().df
+            data = self.process_data
             if self.is_valid(data):
                 shift_tasks = {
                     'model_order_query': f'{self.order_model_select.currentText()}',
@@ -477,8 +473,6 @@ class WorkspaceWidget(QWidget):
                     }
                     shift_tasks['shift_tasks'].append(shift_task)
                 self.send_tech_data(shift_tasks)
-                # thread = threading.Thread(target=self.send_tech_data, args=(shift_tasks,))
-                # thread.start()
         except Exception as ex:
             logging.exception(ex)
 
@@ -486,7 +480,6 @@ class WorkspaceWidget(QWidget):
         try:
             message = "⛔"
             terminals = ['11', '12']
-            is_valid = True
 
             # Проверка 1 - Уникальность id
             is_valid = data[COLUMNS[20]].is_unique
@@ -533,11 +526,10 @@ class WorkspaceWidget(QWidget):
         for action in self.table_process.actions():
             self.table_process.removeAction(action)
         self.table_process.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)
-        if self.is_on_change:
-            self.table_process.addAction(self.add_operation_action)
-            self.table_process.addAction(self.add_row_up_action)
-            self.table_process.addAction(self.add_row_down_action)
-            self.table_process.addAction(self.delete_row_action)
+        self.table_process.addAction(self.add_operation_action)
+        self.table_process.addAction(self.add_row_up_action)
+        self.table_process.addAction(self.add_row_down_action)
+        self.table_process.addAction(self.delete_row_action)
 
     def _create_details_table_context_menu(self):
         self.table_details.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)
@@ -588,18 +580,19 @@ class WorkspaceWidget(QWidget):
                     row_names.append(data.iloc[index].name)
             for name in row_names:
                 operation_id = data.loc[name, 'id']
-                mask = data.iloc[:, 21].apply(lambda x: operation_id in x)
-                data[mask].iloc[:, 21].apply(lambda x: x.remove(operation_id))
-                mask = data.iloc[:, 22].apply(lambda x: operation_id in x)
-                data[mask].iloc[:, 22].apply(lambda x: x.remove(operation_id))
-                data = data.drop(name)
+                if operation_id not in table.model().immutables:
+                    mask = data.iloc[:, 21].apply(lambda x: operation_id in x)
+                    data[mask].iloc[:, 21].apply(lambda x: x.remove(operation_id))
+                    mask = data.iloc[:, 22].apply(lambda x: operation_id in x)
+                    data[mask].iloc[:, 22].apply(lambda x: x.remove(operation_id))
+                    data = data.drop(name)
             self.set_table_data(table, data)
         except Exception as ex:
             logging.exception(ex)
 
     def add_operation_for_detail(self):
         indexes = set(map(lambda x: x.row(), self.table_details.selectedIndexes()))
-        data: pd.DataFrame = self.table_process.model().df
+        data: pd.DataFrame = self.process_data
         dialog = OperationChoiceWindow(self)
         dialog.exec()
         for index in sorted(indexes):
@@ -628,7 +621,7 @@ class WorkspaceWidget(QWidget):
 
     def add_operation(self):
         try:
-            data = self.table_process.model().df
+            data = self.process_data
             index = self.table_process.currentIndex().row()
             dialog = OperationChoiceWindow(self)
             dialog.exec()
@@ -655,7 +648,7 @@ class WorkspaceWidget(QWidget):
     def double_click_process_table(self, index):
         try:
             if index.column() in [21, 22]:
-                data = self.table_process.model().df
+                data = self.process_data
                 current_ids = copy(data.iloc[index.row(), index.column()])
                 current_id = data.iloc[index.row(), 20]
                 filtered_data = data[data.iloc[:, 20] != data.iloc[index.row(), 20]]
@@ -680,27 +673,22 @@ class WorkspaceWidget(QWidget):
             logging.exception(ex)
 
     def draw_graph(self):
-        draw_graph(self.table_process.model().df)
+        draw_graph(self.process_data)
 
     def search(self):
         try:
             if self.search_data is None:
-                self.search_data = self.table_process.model().df
+                self.search_data = self.process_data
             data = self.search_data
             data = data[
                 data.apply(lambda x: x.astype(str).str.contains(self.searchbar.text(), case=False, regex=False)).any(
                     axis=1)]
-            # for i in range(len(self.table_process.model().df)):
-            #     self.table_process.setRowHidden(i, True)
-            # for i in range(len(data)):
-            #     self.table_process.setRowHidden(int(data.iloc[i].name), False)
             self.set_table_data(self.table_process, data)
         except Exception as ex:
             logging.exception(ex)
 
     def get_orders_models(self):
         try:
-            logging.debug('Начало запроса заказ-моделей')
             url = "http://127.0.0.1:8000/tehnolog/orders_models"
             response = requests.get(url)
             self.orders_models = json.loads(response.content)
@@ -728,50 +716,60 @@ class WorkspaceWidget(QWidget):
             self.order_model_select.clear()
             self.order_model_select.addItem("Не выбрано")
             self.get_orders_models()
-            # thread = threading.Thread(target=self.get_orders_models)
-            # thread.start()
-            # thread.join()
-            logging.debug('Завершение запроса заказ-моделей')
             for order_model in self.orders_models:
                 self.order_model_select.addItem(order_model['order_model'])
         except Exception as ex:
             logging.exception(ex)
 
-    def save_process_to_file(self, upload=False):
+    def save_process_to_file(self):
         try:
             order = self.order_model_select.currentText().split('_')[0]
             model = self.model_edit.text()
             order_model = f'{order}_{model}'
 
             if len(self.searchbar.text()) != 0:
-                logging.debug('Примененный фильтр сброшен перед сохранением')
                 data = self.search_data
+                logging.debug('Примененный фильтр сброшен перед сохранением')
             else:
-                data = self.table_process.model().df
-
-            if data.empty:
-                logging.debug('Нет данных. Процесс не сохранен')
-                self.main_window.statusBar().showMessage("⛔Ошибка сохранения! Процесс пустой!")
-                return
+                data = self.process_data
 
             if not os.path.exists('data'):
                 os.mkdir('data')
 
-            if not os.path.exists(r'data\uploaded'):
-                os.mkdir(r'data\uploaded')
-
-            if upload:
-                logging.debug(fr'Сохранен файл data\uploaded\{order_model}.json')
-                data.to_json(fr'data\uploaded\{order_model}.json', orient='records')
+            file = fr'data\{order_model}.json'
+            if data.empty:
+                try:
+                    os.remove(file)
+                    logging.debug(f'Сохранен пустой процесс. Файл {file} удален')
+                except Exception as ex:
+                    logging.debug(f'При попытке удаления файла {file} вызвано исключение: {ex}')
             else:
-                logging.debug(fr'Сохранен файл data\{order_model}.json')
-                data.to_json(fr'data\{order_model}.json', orient='records')
-            self.main_window.statusBar().showMessage("💾Сохранено!")
+                data.to_json(file, orient='records')
+                logging.debug(fr'Процесс сохранен в файл {file}')
+                self.main_window.statusBar().showMessage("💾Сохранено!")
         except Exception as ex:
             logging.exception(ex)
             self.main_window.statusBar().showMessage("⛔Ошибка сохранения!")
 
-    def save_to_xlsx(self):
+    def open_process_from_file(self, order_model):
+        try:
+            file = fr'data\{order_model}.json'
+            if os.path.exists(file):
+                data = pd.read_json(file, orient='records', dtype={
+                    COLUMNS[i]: object for i in list(range(6)) + list(range(15, 20))
+                })
+                logging.debug(fr'Открыт файл процесса {file}')
+            else:
+                logging.debug('Новый процесс')
+                data = self.initial_data
+
+            max_id = data[COLUMNS[20]].max()
+            self.table_process.model().last_id = max_id if pd.notna(max_id) else 0
+            self.set_table_data(self.table_process, data)
+        except Exception as ex:
+            logging.exception(ex)
+
+    def export_to_xlsx(self):
         try:
             order = self.order_model_select.currentText().split('_')[0]
             model = self.model_edit.text()
@@ -779,7 +777,7 @@ class WorkspaceWidget(QWidget):
             name = QFileDialog.getSaveFileName(self, 'Сохранить файл', f"{order_model}.xlsx")[0]
             if name:
                 shutil.copyfile('template.xlsx', name)
-                new_rows_count = len(self.table_process.model().df)
+                new_rows_count = len(self.process_data)
                 wb = load_workbook(name)
                 ws = wb['Sheet1']
                 ws.title = model
@@ -791,7 +789,7 @@ class WorkspaceWidget(QWidget):
                 ws[f'L{7 + new_rows_count}'] = f'=L{5 + new_rows_count}/G2'
                 wb.save(name)
                 with pd.ExcelWriter(name, if_sheet_exists='overlay', mode='a') as writer:
-                    self.table_process.model().df.to_excel(
+                    self.process_data.to_excel(
                         excel_writer=writer,
                         sheet_name=model,
                         index=False,
@@ -804,52 +802,46 @@ class WorkspaceWidget(QWidget):
         except Exception as ex:
             logging.exception(ex)
 
-    def open_process_from_file(self, order_model):
-        try:
-            if self.process_is_upload and os.path.exists(fr'data\uploaded\{order_model}.json'):
-                file = fr'data\uploaded\{order_model}.json'
-                data = pd.read_json(file, orient='records', dtype={COLUMNS[0]: 'str', COLUMNS[4]: 'str'})
-                logging.debug(fr'Открыт файл процесса {file}')
-            elif os.path.exists(fr'data\{order_model}.json'):
-                file = fr'data\{order_model}.json'
-                data = pd.read_json(file, orient='records', dtype={COLUMNS[0]: 'str', COLUMNS[4]: 'str'})
-                logging.debug(fr'Открыт файл процесса {file}')
-            else:
-                logging.debug('Новый процесс')
-                data = self.initial_data
-
-            max_id = data[COLUMNS[20]].max()
-            self.table_process.model().last_id = max_id if pd.notna(max_id) else 0
-            self.set_table_data(self.table_process, data)
-        except Exception as ex:
-            logging.exception(ex)
-
     def on_order_model_select(self, item):
         try:
             selected_order_model = self.order_model_select.itemText(item)
             for order_model in self.orders_models:
                 if selected_order_model == order_model['order_model']:
-                    self.model_edit.setText(order_model['model'])
+
                     self.is_planned = order_model['order_status'] != 'не запланировано'
-                    self.process_is_upload = order_model['td_status'] == 'утверждено' and not order_model['on_change']
                     self.has_fio_doers = order_model['has_fio_doers']
-                    self.model_edit.setDisabled(self.is_planned)
-                    self.table_process.setDisabled(False)
-                    if self.process_is_upload:
-                        self.change_button.show()
-                        self.is_on_change = False
-                    else:
-                        self.change_button.hide()
-                        self.is_on_change = True
-                    self._create_process_table_context_menu()
-                    self.open_process_from_file(order_model['order_model'])
+
+                    conditions = [
+                        order_model['td_status'] == 'утверждено',
+                        not order_model['on_change']
+                    ]
+
+                    self.process_is_upload = all(conditions)
+
                     self.process_status_label.setText(
                         f'Статус: {"загружен" if self.process_is_upload else "не загружен"}, '
                         f'{order_model["order_status"]}, '
                         f'{"распределено" if self.has_fio_doers else "не распределено"}'
                     )
+
+                    self.ids_without_doers = order_model["st_without_doers"]
+
+                    if self.process_is_upload and len(self.ids_without_doers) > 0:
+                        self.change_button.show()
+                        self.is_on_change = False
+                    else:
+                        self.change_button.hide()
+                        self.is_on_change = True
+
+                    self._create_process_table_context_menu()
+                    self.model_edit.setText(order_model['model'])
+                    self.model_edit.setDisabled(self.is_planned)
+                    self.table_process.setDisabled(False)
+
+                    self.open_process_from_file(order_model['order_model'])
                     break
                 else:
+                    self.change_button.hide()
                     self.model_edit.clear()
                     self.model_edit.setDisabled(True)
                     self.table_process.setDisabled(True)
@@ -857,20 +849,23 @@ class WorkspaceWidget(QWidget):
         except Exception as ex:
             logging.exception(ex)
 
+    def update_process_status(self):
+        order = self.order_model_select.currentText().split('_')[0]
+        self.on_order_model_click()
+        self.order_model_select.setCurrentText(f'{order}_{self.model_edit.text()}')
+        self.on_order_model_select(self.order_model_select.currentIndex())
+
     def set_change_status(self, data):
-        self.main_window.statusBar().showMessage("Изменение статуса...")
         try:
+            self.main_window.statusBar().showMessage("Изменение статуса...")
             url = "http://127.0.0.1:8000/tehnolog/change_st_status"
             payload = json.dumps(data)
             response = requests.post(url, data=payload)
             data = json.loads(response.content)
-            logging.debug(data['message'])
             if response.status_code == 200:
-                order = self.order_model_select.currentText().split('_')[0]
-                self.on_order_model_click()
-                self.order_model_select.setCurrentText(f'{order}_{self.model_edit.text()}')
-                self.on_order_model_select(self.order_model_select.currentIndex())
+                self.update_process_status()
             self.main_window.statusBar().showMessage(data['message'])
+            logging.debug(data['message'])
         except requests.exceptions.ConnectionError as ex:
             logging.exception(ex)
             self.main_window.statusBar().showMessage("⛔Нет связи с сервером!")
@@ -891,15 +886,13 @@ class WorkspaceWidget(QWidget):
                 message,
                 buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
             if answer == QMessageBox.StandardButton.Yes:
-                ids = self.table_process.model().df[COLUMNS[20]].tolist()
+                ids = self.process_data[COLUMNS[20]].tolist()
                 data = {
                     'model_order_query': self.order_model_select.currentText(),
                     'tech_ids': list(set(ids) - set(self.has_fio_doers)),
                     'status': 'корректировка'
                 }
                 self.set_change_status(data)
-                # thread = threading.Thread(target=self.set_change_status, args=(data,))
-                # thread.start()
         except Exception as ex:
             logging.exception(ex)
 
@@ -982,14 +975,14 @@ class OperationChoiceWindow(QDialog):
             logging.exception(ex)
 
     def open_from_file(self):
-        xlsx_file_name = QFileDialog.getOpenFileName(
+        xlsx_file_names = QFileDialog.getOpenFileNames(
             self,
             caption="Выберите файл",
             directory=r"D:\\",
             filter="Excel Files (*.xlsx);;",
         )[0]
-        if xlsx_file_name:
-            get_all_operations(xlsx_file_name)
+        if xlsx_file_names:
+            get_all_operations(xlsx_file_names)
             data = pd.read_excel(r'operations.xlsx', index_col=0)
             self.set_table_data(self.table_operations, data)
 

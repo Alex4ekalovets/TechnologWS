@@ -1,4 +1,9 @@
+import logging
+
 import pandas as pd
+
+from rapidfuzz import fuzz
+
 
 # НЕ МЕНЯТЬ ПОРЯДОК И НЕ УДАЛЯТЬ! ТОЛЬКО ДОБАВЛЯТЬ В КОНЕЦ! НАЗВАНИЯ МОЖНО МЕНЯТЬ, А СУТЬ - НЕТ!
 # ЕСЛИ ИЗМЕНИТЬ, ТО ПРИДЕТСЯ МЕНЯТЬ ВСЕ ИНДЕКСЫ ПО КОДУ
@@ -41,22 +46,35 @@ def get_all_category(xlsx_file):
     return categories
 
 
-def get_all_operations(xlsx_file_name):
-    xlsx_file = pd.ExcelFile(xlsx_file_name)
-    sheet_names = xlsx_file.sheet_names
-    operations = pd.DataFrame()
-    for sheet in sheet_names:
-        all_data = xlsx_file.parse(sheet)
-        filtered_data = all_data[
-                            all_data.iloc[:, 2].notna() & all_data.iloc[:, 13].astype(str).str.isdigit()
-                            ].iloc[:, 0:15]
-        filtered_data.iloc[:, 0:2] = filtered_data.iloc[:, 0:2].ffill()
-        filtered_data.columns = COLUMNS[:15]
-        operations = pd.concat([operations, filtered_data])
-        operations = operations.drop_duplicates()
-        operations.index = range(0, len(operations))
+def get_all_operations(xlsx_file_names):
+    operations = pd.DataFrame(columns=COLUMNS[:15])
+    for xlsx_file_name in xlsx_file_names:
+        xlsx_file = pd.ExcelFile(xlsx_file_name)
+        sheet_names = xlsx_file.sheet_names
+        for sheet in sheet_names:
+            try:
+                all_data = xlsx_file.parse(sheet)
+                filtered_data = all_data[all_data.iloc[:, 2].notna()]
+
+                new_columns = dict()
+                filtered_data.columns = filtered_data.iloc[0].tolist()
+                for title in filtered_data.columns:
+                    for column in COLUMNS[:15]:
+                        score = fuzz.ratio(str(title), column) / 100
+                        if score > 0.85:
+                            new_columns[title] = column
+                filtered_data = filtered_data.rename(columns=new_columns)
+                filtered_data = filtered_data.iloc[1:].filter(items=COLUMNS[:15])
+                filtered_data = filtered_data[filtered_data[COLUMNS[13]].astype(str).str.isdigit()]
+                filtered_data.iloc[:, 0:2] = filtered_data.iloc[:, 0:2].ffill()
+                operations = pd.concat([operations, filtered_data])
+                operations = operations.drop_duplicates()
+                operations.index = range(0, len(operations))
+            except Exception as ex:
+                logging.warning(f'При чтении данных с листа {sheet} возникло исключение:')
+                logging.exception(ex)
     operations.to_excel('operations.xlsx')
 
 
 if __name__ == "__main__":
-    get_all_operations(r'D:\Projects\TechnologWS\Трудоёмкость серия Р.xlsx')
+    get_all_operations(r'D:\Projects\TechnologWS\Трудоёмкость серия SV.xlsx')
