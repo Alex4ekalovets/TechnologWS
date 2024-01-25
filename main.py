@@ -954,7 +954,10 @@ class OperationChoiceWindow(QDialog):
         self.table_operations = QTableView()
         self.table_operations.setGeometry(0, 0, 800, 600)
 
-        data = pd.read_excel(r'operations.xlsx', index_col=0)
+        if os.path.exists('operations.xlsx'):
+            data = pd.read_excel(r'operations.xlsx', index_col=0)
+        else:
+            data = pd.DataFrame(columns=COLUMNS[:15])
         model = PandasModel(data, 0)
 
         self.table_operations.setModel(model)

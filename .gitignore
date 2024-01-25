@@ -164,5 +164,5 @@ misc/
 *.xlsx
 *.bat
 *.pdf
-!operations.xlsx
 !template.xlsx
+data/
