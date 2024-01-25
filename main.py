@@ -2,6 +2,7 @@ import json
 import logging
 import math
 import os
+import re
 import shutil
 import sys
 import threading
@@ -18,23 +19,33 @@ from PyQt6.QtWidgets import (
     QFileDialog, QStatusBar, QToolBar, QComboBox, QDialog, QPushButton, QSplitter, QLineEdit, QCheckBox, QMessageBox,
 )
 import pandas as pd
-import numpy as np
 from openpyxl.reader.excel import load_workbook
 
 from cdw_reader import get_specification
 from graph import draw_graph
-from parse_operations import get_all_operations, COLUMNS
+from parse_operations import get_all_operations, COLUMNS, sheet_handler
 
 
 def df_handler(df, start_id=0):
-    columns_count = df.shape[1] if df.shape[1] < 20 else 20
-    filtered_data = df[df.iloc[:, 2].notna() & df.iloc[:, 13].astype(str).str.isdigit()].iloc[:, 0:columns_count]
-    filtered_data.iloc[:, 0:2] = filtered_data.iloc[:, 0:2].ffill()
-    filtered_data.columns = COLUMNS[:columns_count]
+    filtered_data = sheet_handler(df)
+    # columns_count = df.shape[1] if df.shape[1] < 20 else 20
+    # filtered_data = df[df.iloc[:, 2].notna() & df.iloc[:, 13].astype(str).str.isdigit()].iloc[:, 0:columns_count]
+    # filtered_data.iloc[:, 0:2] = filtered_data.iloc[:, 0:2].ffill()
+    # filtered_data.columns = COLUMNS[:columns_count]
+    if filtered_data is None:
+        filtered_data = pd.DataFrame()
     filtered_data = filtered_data.reindex(columns=COLUMNS)
     filtered_data['id'] = range(start_id + 1, len(filtered_data) + start_id + 1)
-    filtered_data[COLUMNS[21]] = np.empty((len(filtered_data), 0)).tolist()
-    filtered_data[COLUMNS[22]] = np.empty((len(filtered_data), 0)).tolist()
+
+    def next_prev_handler(x):
+        if str(x) not in ['nan', '']:
+            values = re.split(r',|\.', str(x).strip('[]'))
+            return list(map(lambda y: int(y.strip()), values))
+        else:
+            return []
+
+    filtered_data[COLUMNS[21]] = filtered_data[COLUMNS[21]].apply(next_prev_handler)
+    filtered_data[COLUMNS[22]] = filtered_data[COLUMNS[22]].apply(next_prev_handler)
     return filtered_data
 
 
